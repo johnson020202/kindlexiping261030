@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f3f1eb"><meta name="description" content="百部经典，每日一段。Kindle 锁屏与离线阅读器。"><title>栖息 · 每日名著</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><a class="wordmark" href="./" aria-label="返回今天">栖<span>息</span></a><span class="edition">一百部经典 · 每日一段</span><div class="header-actions"><button id="library" aria-label="打开书架">书架</button><button id="export" aria-label="下载今日锁屏">锁屏图</button></div></header>
+<main>
+<section class="reader" id="reader" aria-live="polite"><div class="eyebrow" id="date-top"></div><div class="rule"></div><blockquote id="quote"></blockquote><div class="attribution"><h1 id="book"></h1><p id="author"></p><span id="chapter"></span></div><div class="clock" id="clock"></div><div class="day-mark" id="day-mark">今日摘抄</div></section>
+<nav class="navigation" aria-label="摘抄切换"><button id="previous"><span>←</span> 上一句</button><button id="today" class="today">回到今天</button><button id="next">下一句 <span>→</span></button></nav>
+<div class="hints"><span>键盘 ← → 翻句</span><span id="counter"></span></div>
+</main>
+<dialog id="books"><div class="library-heading"><div><span class="eyebrow">THE LIBRARY</span><h2>一百部，慢慢读</h2></div><button id="close-library" aria-label="关闭书架">×</button></div><label class="search"><span>寻找一本书或作者</span><input id="search" type="search" placeholder="输入书名 / 作者" autocomplete="off"></label><div id="book-list"></div></dialog>
+<footer>原文照录 · 简繁转换 · 公版译文<br><span>kindlexiping261030 · v0.1.0</span></footer>
+<script src="../content/books.js"></script><script src="app.js"></script>
+</body></html>

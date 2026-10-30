@@ -1,0 +1,10 @@
+source-cache/
+build/
+dist/
+.DS_Store
+*.log
+*.pyc
+__pycache__/
+*.pid
+
+backups/
