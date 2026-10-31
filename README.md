@@ -54,23 +54,26 @@ make preview
 2. 安全弹出后，在 Kindle 搜索框输入 `;log runme` 并回车，启用每日锁屏。
 3. 打开书库里的「栖息 · 开启每日锁屏」可再次启用；「栖息 · 关闭并恢复」恢复原厂锁屏；「栖息 · 翻阅」进入解锁后的翻句页。
 
-> 真机锁屏必须由设备上的 root 入口触发一次；从 USB 存储侧无法代替按键/搜索操作。当前已连接的设备固件为 **5.16.2.1.1**，低于上游屏保引擎声明的 5.16.3 起测版本，因此本项目在该机上的锁屏生效状态必须实测后确认，见文末“验收记录”。
+> 真机锁屏必须由设备上的 root 入口触发一次；从 USB 存储侧无法代替按键/搜索操作。当前已连接的设备为 **Kindle Paperwhite 3（第 7 代）**，固件 **5.16.2.1.1**，低于上游屏保引擎声明的 5.16.3 起测版本，因此本项目在该机上的锁屏生效状态必须实测后确认，见文末“验收记录”。
+
+> **二进制必须是软浮点。** 这台设备没有 `/lib/ld-linux-armhf.so.3`，硬浮点程序会 exec 失败且无明显报错。重建用 `./tools/build_kindle_bin.sh`，它和 `tools/package_kindle.py` 都会拒绝硬浮点产物。详见 [docs/越狱与安装.md](docs/越狱与安装.md)。
 
 ### 安全边界
 
 - 只写入 `/mnt/us/extensions/kindlexiping261030/` 和 `/mnt/us/documents/`，不修改系统分区。
 - 运行时把可执行文件复制到 `/var/tmp`，不依赖 FAT 分区的执行权限。
 - 不安装开机自启；重启后需要再次运行启用脚本。屏保引擎保留上游的恢复路径。
-- 安装脚本会先备份原 `RUNME.sh` 为 `RUNME.before-kindlexiping.sh`，并保留 USB 恢复脚本。
+- `RUNME.sh` 是多个 Kindle 项目共用的单槽，本项目安装的是分发器，只执行自己的 `runme.d/`，不覆盖其他项目的入口；链回旧 `RUNME.sh` 默认关闭，避免触发会卸载 U 盘卷的 USB 联网脚本。
 
 ## 开发
 
 ```sh
+make kindle-bin  # 交叉编译设备端二进制并校验软浮点 ABI
 make content   # 重新下载/校验底本并生成 content/books.json
 make kindle-data # 生成设备端动态排版数据 kindle/data.tsv
 make preview   # 生成当天预览
 make test      # 内容、字形、索引、脚本检查
-make package   # 生成 dist/ 离线安装包
+make package   # 生成 dist/ 离线安装包（含 ABI 校验）
 ```
 
 依赖：Python 3.9+、Pillow、fontTools、opencc-python-reimplemented；Node 仅用于本地静态服务器。

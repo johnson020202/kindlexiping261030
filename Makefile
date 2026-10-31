@@ -3,7 +3,7 @@ PYTHON ?= python3
 VERSION := $(shell cat VERSION)
 DIST := dist/kindlexiping261030-v$(VERSION)
 
-.PHONY: all content preview images test serve package install release clean
+.PHONY: all content preview images test serve kindle-bin kindle-data package install release clean
 
 all: test preview
 
@@ -19,6 +19,9 @@ images:
 	@i=0; while [ $$i -lt 8 ]; do $(PYTHON) tools/render_worker.py $$i 8 & i=$$((i+1)); done; wait
 	@test "$$(find build/images -name '*.png' | wc -l | tr -d ' ')" = 5000
 
+kindle-bin:
+	./tools/build_kindle_bin.sh
+
 kindle-data:
 	$(PYTHON) tools/build_kindle_data.py
 
@@ -28,7 +31,7 @@ test:
 serve:
 	$(PYTHON) -m http.server 8765
 
-package:
+package: kindle-bin
 	$(PYTHON) tools/package_kindle.py
 
 install:

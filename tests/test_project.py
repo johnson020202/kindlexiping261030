@@ -50,6 +50,51 @@ class ProjectTests(unittest.TestCase):
         for path in (ROOT / 'kindle/scripts').glob('*.sh'):
             subprocess.run(['/bin/sh', '-n', str(path)], check=True)
 
+    def test_script_paths_exist_in_deployed_layout(self):
+        """Every $BASE reference must resolve under the installed layout.
+
+        The 0.1.1 release shipped scripts that sourced $BASE/blanket_renderers.sh
+        while the file actually lives in $BASE/scripts/: the launcher died as it
+        sourced, drew nothing, and the only trace was one line in install.log.
+        Paths are checked against what tools/install_kindle.sh deploys, not
+        against the source tree.
+        """
+        import re
+        deployed = {
+            'bin/daily-index', 'bin/fbink_hf', 'bin/kindlexiping-reader',
+            'bin/screensaver_shield', 'data.tsv', 'books.json',
+            'SmileySans-Oblique.ttf', 'state/count',
+            'scripts/daemon.sh', 'scripts/draw.sh', 'scripts/toggle.sh',
+            'scripts/blanket_renderers.sh', 'runme.d/10-enable.sh',
+        }
+        # Created at runtime rather than shipped.
+        written = {'launcher.log', 'custom_ss.log', 'install.log',
+                   'state/daily-index', 'state/browser-index',
+                   'screen-lockscreen.raw', 'screen-after-run.raw',
+                   'diag.log', 'diag.err'}
+
+        problems = []
+        for path in sorted((ROOT / 'kindle/scripts').glob('*.sh')):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                for match in re.finditer(r'\$BASE/?([A-Za-z0-9_./-]+)', line):
+                    rel = match.group(1).strip('/')
+                    if not rel or rel in deployed or rel in written:
+                        continue
+                    # Directory prefixes before a glob, e.g. "bin/" in "$BASE"/bin/*
+                    if any(name.startswith(rel) for name in deployed | written):
+                        continue
+                    problems.append(f'{path.name}:{number} -> {rel}')
+        self.assertEqual(problems, [], 'unresolved $BASE paths: ' + '; '.join(problems))
+
+    def test_sourcing_includes_scripts_dir(self):
+        """Guard the exact regression: these files live in the scripts/ subdir."""
+        for name in ('toggle.sh', 'daemon.sh'):
+            text = (ROOT / 'kindle/scripts' / name).read_text()
+            self.assertNotIn('. "$BASE/blanket_renderers.sh"', text,
+                             f'{name} sources blanket_renderers.sh from the extension root')
+            self.assertIn('. "$BASE/scripts/blanket_renderers.sh"', text,
+                          f'{name} must source blanket_renderers.sh from scripts/')
+
     def test_daily_index_vectors(self):
         import sys
         sys.path.insert(0, str(ROOT / 'tools'))

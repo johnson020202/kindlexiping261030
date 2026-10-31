@@ -8,12 +8,13 @@ STAMP="$(date '+%Y%m%d-%H%M%S')"
 [ -d "$VOLUME" ] || { echo "Kindle not mounted at $VOLUME" >&2; exit 1; }
 [ -f "$ROOT/kindle/data.tsv" ] || { echo "Run 'python3 tools/build_kindle_data.py' first" >&2; exit 1; }
 
-mkdir -p "$ROOT/backups" "$VOLUME/extensions" "$VOLUME/documents" "$BASE"/{bin,scripts,state}
+mkdir -p "$ROOT/backups" "$VOLUME/extensions" "$VOLUME/documents" "$BASE"/{bin,scripts,state} "$BASE/runme.d"
 if [ -f "$VOLUME/RUNME.sh" ] && [ ! -f "$VOLUME/RUNME.before-kindlexiping.sh" ]; then
     cp "$VOLUME/RUNME.sh" "$VOLUME/RUNME.before-kindlexiping.sh"
     cp "$VOLUME/RUNME.sh" "$ROOT/backups/RUNME-before-kindlexiping-$STAMP.sh"
 fi
 cp -R "$ROOT/kindle/bin/." "$BASE/bin/"
+rm -f "$BASE/bin/screensaver_draw"
 cp "$ROOT"/kindle/scripts/*.sh "$BASE/scripts/"
 cp "$ROOT/assets/fonts/SmileySans-Oblique.ttf" "$BASE/"
 cp "$ROOT/assets/fonts/OFL.txt" "$BASE/SmileySans-OFL.txt"
@@ -29,21 +30,66 @@ for pair in "Xiping Enable.sh|栖息 · 开启每日锁屏|enable" "Xiping Brows
     chmod 755 "$VOLUME/documents/$file"
 done
 
-cat > "$VOLUME/RUNME.sh" <<'EOF'
+cat > "$BASE/runme.d/10-enable.sh" <<'EOF'
 #!/bin/sh
-exec >> /mnt/us/extensions/kindlexiping261030/install.log 2>&1
+# Invoked by the RUNME dispatcher; runs with root.
+BASE=/mnt/us/extensions/kindlexiping261030
+RUNTIME=/var/tmp/kindlexiping-bin
+LOG="$BASE/install.log"
+exec >> "$LOG" 2>&1
 set -x
+echo "===== run $(date '+%Y-%m-%d %H:%M:%S') ====="
 date
 uname -a
-BASE=/mnt/us/extensions/kindlexiping261030
-mkdir -p /var/tmp/kindlexiping-bin
-cp "$BASE"/bin/* /var/tmp/kindlexiping-bin/
-chmod 755 /var/tmp/kindlexiping-bin/*
-sh "$BASE/scripts/toggle.sh" enable
+[ -f /lib/ld-linux-armhf.so.3 ] && echo "device: hard-float (armhf)" || echo "device: soft-float (armel)"
+mkdir -p "$RUNTIME"
+cp "$BASE"/bin/* "$RUNTIME"/
+chmod 755 "$RUNTIME"/*
+if ! sh "$BASE/scripts/toggle.sh" enable; then
+    echo "FAILED: toggle.sh enable returned non-zero"
+fi
 date
 sync
 EOF
+chmod 755 "$BASE/runme.d/10-enable.sh"
+
+# RUNME.sh is one shared slot that other Kindle projects also write to. Rather
+# than overwrite it, install a dispatcher that runs runme.d/*.sh and then, only
+# if asked, chains to a preserved RUNME.
+#
+# Chaining is OFF by default: the RUNME.sh found on a device is often a USB
+# networking bootstrap that calls useUsbForNetwork, which drops the mass-storage
+# volume the installer is writing through. Set KINDLE_RUNME_CHAIN=<file> to
+# opt in with a specific, known-safe script.
+CHAIN_FILE="${KINDLE_RUNME_CHAIN:-}"
+cat > "$VOLUME/RUNME.sh" <<EOF
+#!/bin/sh
+# Kindle RUNME dispatcher (installed by kindlexiping261030).
+# Runs each *.sh in runme.d/ in name order, each logging separately.
+US=/mnt/us
+BASE="\$US/extensions/kindlexiping261030"
+mkdir -p "\$BASE/runme.d"
+if [ -d "\$BASE/runme.d" ]; then
+    for script in "\$BASE"/runme.d/*.sh; do
+        [ -f "\$script" ] || continue
+        sh "\$script" </dev/null
+    done
+fi
+if [ -f "\$BASE/runme.d/.chain" ]; then
+    CHAIN=\$(cat "\$BASE/runme.d/.chain")
+    if [ -n "\$CHAIN" ] && [ -f "\$CHAIN" ]; then
+        sh "\$CHAIN" </dev/null
+    fi
+fi
+exit 0
+EOF
 chmod 755 "$VOLUME/RUNME.sh"
+if [ -n "$CHAIN_FILE" ]; then
+    printf '%s\n' "$CHAIN_FILE" > "$BASE/runme.d/.chain"
+    echo "RUNME will chain to: $CHAIN_FILE"
+elif [ -f "$BASE/runme.d/.chain" ]; then
+    rm -f "$BASE/runme.d/.chain"
+fi
 sync
 echo "Files installed to $BASE"
 echo "Existing RUNME backed up as RUNME.before-kindlexiping.sh"
