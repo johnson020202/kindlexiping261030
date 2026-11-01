@@ -3,7 +3,7 @@
 # DontUseFBInk
 BASE="/mnt/us/extensions/kindlexiping261030"
 BIN="/var/tmp/kindlexiping-bin"
-SHIELD_PIDFILE="/tmp/custom_ss_shield.pid"
+SHIELD_PIDFILE="/tmp/custom_ss_shield.pid"   # retired helper; only cleaned up
 PIDFILE="/tmp/custom_ss_daemon.pid"
 STATEFILE="/tmp/custom_ss_restore_renderers"
 FIFO="/tmp/custom_ss_events.fifo"
@@ -53,10 +53,8 @@ stop_reader() {
         kill "$(cat /tmp/kindlexiping-reader.pid)" 2>/dev/null
         rm -f /tmp/kindlexiping-reader.pid
     fi
-    if [ -f /tmp/kindlexiping-reader-shield.pid ]; then
-        kill "$(cat /tmp/kindlexiping-reader-shield.pid)" 2>/dev/null
-        rm -f /tmp/kindlexiping-reader-shield.pid
-    fi
+    # Leftovers from the retired screensaver_shield helper.
+    rm -f /tmp/kindlexiping-reader-shield.pid /tmp/kindlexiping-reader-cover.pid
 }
 disable() {
     stop_reader
@@ -67,13 +65,12 @@ disable() {
     refresh_display
     return 0
 }
-# xrefresh is an X11 client and is NOT installed on this device, so calling it
-# unguarded just writes "xrefresh: not found" to the log. FBInk already wrote
-# the pixels to /dev/fb0; only nudge the X server when a client is present.
+# FBInk draws straight into /dev/fb0, underneath the X server, so X never learns
+# that the pixels changed and repaints nothing. xscreen forces every window to
+# redraw. It replaces xredraw, which was built dynamically against libX11.so.6
+# and never executed on this device (see native/xscreen.c).
 refresh_display() {
-    if command -v xrefresh >/dev/null 2>&1; then
-        DISPLAY=:0 xrefresh >>"$LOG" 2>&1
-    fi
+    DISPLAY=:0 "$BIN/xscreen" wake </dev/null >>"$LOG" 2>&1
 }
 show() {
     prepare_runtime
@@ -82,6 +79,7 @@ show() {
     # which has no CJK glyphs, so every Chinese character is reported as
     # "not covered by this font" and nothing readable is drawn.
     # -t draws a single line, so multi-line messages are laid out here.
+    # px must be 1.2x the intended size; see px_of in draw.sh.
     "$BIN/fbink_hf" -q -c -B WHITE
     Y=520
     OLD_IFS="$IFS"
@@ -90,7 +88,7 @@ show() {
     for LINE in $1; do
         [ -n "$LINE" ] || continue
         "$BIN/fbink_hf" -q -b -m -B WHITE -C BLACK \
-            -t regular="$FONT",px=48,top="$Y",left=96,right=96,notrunc "$LINE"
+            -t regular="$FONT",px=58,top="$Y",left=96,right=96,notrunc "$LINE"
         Y=$((Y + 96))
     done
     IFS="$OLD_IFS"
@@ -100,17 +98,13 @@ show() {
 }
 case "${1:-browse}" in
     browse)
-        if is_running; then
-            stop_reader
-            prepare_runtime
-            DISPLAY=:0 "$BIN/screensaver_shield" >>"$LOG" 2>&1 &
-            echo $! > /tmp/kindlexiping-reader-shield.pid
-            "$BIN/kindlexiping-reader" "${KINDLE_TOUCH:-/dev/input/event1}" >>"$LOG" 2>&1 &
-            echo $! > /tmp/kindlexiping-reader.pid
-        else
-            show "栖息已关闭
-再次打开可启动锁屏"
-        fi
+        # Browsing is a foreground action and must work whether or not the
+        # sleep daemon happens to be running; it used to refuse to start
+        # otherwise, which read as "there is no way to change the quote".
+        prepare_runtime
+        stop_reader
+        "$BIN/kindlexiping-reader" "${KINDLE_TOUCH:-/dev/input/event1}" >>"$LOG" 2>&1 &
+        echo $! > /tmp/kindlexiping-reader.pid
         ;;
     enable)
         prepare_runtime
@@ -120,14 +114,47 @@ case "${1:-browse}" in
 请重新安装软浮点版本"
             exit 1
         fi
-        if is_running; then show "每日名著锁屏
-已经启用"; exit 0; fi
+        # Always restart instead of short-circuiting on "already running".
+        # The daemon keeps its script in memory, so a no-op here meant every
+        # fix to daemon.sh stayed dormant until the device rebooted -- which
+        # is exactly why the white-screen fix appeared not to work.
         disable
-        sh "$BASE/scripts/daemon.sh" >/dev/null 2>&1 &
+        # Detach into its own session, don't just background it.
+        #
+        # A plain `&` leaves the daemon in the launching shell's process group,
+        # and this device runs documents from a short-lived shell: when that
+        # shell exits, the group is signalled. nohup only ignores SIGHUP, so it
+        # does not help if the group receives SIGTERM. setsid leaves the group
+        # entirely, which is what the daemon needs to outlive the click.
+        if command -v setsid >/dev/null 2>&1; then
+            setsid sh "$BASE/scripts/daemon.sh" >/dev/null 2>&1 &
+        elif command -v nohup >/dev/null 2>&1; then
+            nohup sh "$BASE/scripts/daemon.sh" >/dev/null 2>&1 &
+        else
+            sh "$BASE/scripts/daemon.sh" >/dev/null 2>&1 &
+        fi
+        sleep 3
+        # Record the outcome in launcher.log. Without this the only evidence of a
+        # failed start was a missing READY line in custom_ss.log, which looks the
+        # same as "enable was never run at all".
+        if is_running; then
+            log "daemon started pid=$(cat "$PIDFILE")"
+            show "每日名著锁屏
+已启用"
+        else
+            log "daemon did NOT start"
+            show "未能启用
+请查看运行日志"
+            exit 1
+        fi
+        # One more check after the message is drawn, to catch a daemon that
+        # starts and then dies with its parent.
         sleep 2
-        if is_running; then show "每日名著锁屏
-已启用"; else show "未能启用
-请查看运行日志"; exit 1; fi
+        if is_running; then
+            log "daemon still running after the message"
+        else
+            log "daemon DIED right after starting"
+        fi
         ;;
     disable)
         disable

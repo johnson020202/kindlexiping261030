@@ -103,7 +103,7 @@ exit 0
 def main():
     if len(BOOKS) != 100 or sum(len(b['excerpts']) for b in BOOKS) != 5000:
         raise SystemExit('content is incomplete')
-    if not (ROOT / 'kindle/data.tsv').exists():
+    if not (ROOT / 'kindle/data.tsv').exists() or not (ROOT / 'kindle/books.tsv').exists():
         raise SystemExit('run `python3 tools/build_kindle_data.py` first')
     if (ROOT / 'assets/fonts/SmileySans-Oblique.ttf').stat().st_size < 1000000:
         raise SystemExit('Smiley Sans is missing')
@@ -113,16 +113,25 @@ def main():
     for folder in (EXT / 'bin', EXT / 'scripts', EXT / 'state', EXT / 'runme.d', DOCS):
         folder.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / 'kindle/data.tsv', EXT / 'data.tsv')
+    shutil.copy2(ROOT / 'kindle/books.tsv', EXT / 'books.tsv')
     shutil.copy2(ROOT / 'assets/fonts/SmileySans-Oblique.ttf', EXT / 'SmileySans-Oblique.ttf')
     shutil.copy2(ROOT / 'assets/fonts/OFL.txt', EXT / 'SmileySans-OFL.txt')
     shutil.copy2(ROOT / 'content/books.json', EXT / 'books.json')
     shutil.copytree(ROOT / 'kindle/bin', EXT / 'bin', dirs_exist_ok=True)
-    (EXT / 'bin/screensaver_draw').unlink(missing_ok=True)
-    for name in ('daemon.sh', 'draw.sh', 'toggle.sh', 'blanket_renderers.sh'):
+    # Retired helpers: linked dynamically against a stub libX11.so.6 and never
+    # ran on this device. xscreen replaced them.
+    for retired in ('screensaver_draw', 'xredraw', 'screensaver_shield'):
+        (EXT / 'bin' / retired).unlink(missing_ok=True)
+    for name in ('daemon.sh', 'draw.sh', 'draw_books.sh', 'toggle.sh', 'blanket_renderers.sh'):
         shutil.copy2(ROOT / 'kindle/scripts' / name, EXT / 'scripts' / name)
     for name in ('LICENSE', 'UPSTREAM-LICENSE', 'THIRD_PARTY_NOTICES.md', 'CREDITS'):
         shutil.copy2(ROOT / 'kindle' / name, EXT / name)
     shutil.copytree(ROOT / 'kindle/licenses', EXT / 'licenses', dirs_exist_ok=True)
+    # The hotfix runs /mnt/us/emergency.sh on every framework_ready, so shipping
+    # it here is what gives the installed device a network channel without the
+    # manual `;log runme` step. It belongs at the volume root, not under the
+    # extension directory.
+    shutil.copy2(ROOT / 'kindle/emergency.sh', STAGE / 'emergency.sh')
     (EXT / 'state/count').write_text('5000\n')
     for filename, label, action in (
         ('Xiping Enable.sh', '栖息 · 开启每日锁屏', 'enable'),
@@ -134,10 +143,12 @@ def main():
             f'exec sh /mnt/us/extensions/kindlexiping261030/scripts/toggle.sh {action}\n')
     (STAGE / 'README.txt').write_text(
         '栖息 · kindlexiping261030 v' + VERSION + '\n\n'
-        '安装：把 extensions 和 documents 合并复制到 Kindle 根目录。\n'
+        '安装：把 extensions、documents 与 emergency.sh 复制到 Kindle 根目录。\n'
         '本包自带 RUNME.sh 分发器：它只运行 runme.d/ 里的脚本，再转交原有的 RUNME.sh，\n'
         '所以不会覆盖其他项目。若已有 RUNME.sh，请先改名保留为 RUNME.before-kindlexiping.sh。\n'
-        '然后在 Kindle 搜索框执行 ;log runme。\n'
+        'emergency.sh 由 hotfix 的开机任务调用，每次框架就绪时自动启动 Wi-Fi SSH，\n'
+        '之后可以联网维护，无需反复插拔 USB。\n'
+        '首次启用锁屏：在 Kindle 搜索框执行 ;log runme。\n'
         '关闭：打开「栖息 · 关闭并恢复」。\n'
     )
     (EXT / 'runme.d/10-enable.sh').write_text(DISABLED_STUB)

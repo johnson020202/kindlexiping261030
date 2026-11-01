@@ -8,23 +8,22 @@
 #
 # Target: Kindle PW3 (7th gen, i.MX6, armv7l), firmware 5.16.2.1.1.
 #   - float ABI must be SOFT (EF_ARM_ABI_FLOAT_SOFT, e_flags bit 0x200)
-#   - daily-index / kindlexiping-reader are static musl: no libc version risk
-#   - screensaver_shield links the device's libX11.so.6 and libpthread.so.0
+#   - every shipped helper is static musl: no libc or library-version risk
+#
+# The 0.1.x line shipped two dynamically linked X11 helpers (xredraw and
+# screensaver_shield). Neither ever ran on the device, and no log line recorded
+# why: the shield prints "starting" as its first statement and that line never
+# reached custom_ss.log, so it died before main(). xscreen replaces both with a
+# static binary that speaks the X11 wire protocol directly.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ZIG="${ZIG:-zig}"
 OUT="$ROOT/kindle/bin"
-UPSTREAM="$ROOT/source-cache/upstream-shield"
 
 command -v "$ZIG" >/dev/null 2>&1 || {
     echo "error: zig not found. Install it or set ZIG=/path/to/zig" >&2
     echo "       (zig cross-compiles arm-linux-musleabi out of the box)" >&2
-    exit 1
-}
-[ -f "$UPSTREAM/screensaver_shield.c" ] || {
-    echo "error: missing $UPSTREAM/screensaver_shield.c" >&2
-    echo "       fetch from chengandre/kindle-custom-screensaver src/shield/" >&2
     exit 1
 }
 
@@ -38,30 +37,21 @@ echo "==> kindlexiping-reader (static musl)"
 "$ZIG" cc -target arm-linux-musleabi -mcpu=cortex_a9 -Os -s -static \
     -o "$OUT/kindlexiping-reader" "$ROOT/native/reader.c" 2>/dev/null
 
-# screensaver_shield talks X11, so it cannot be static. Build it against the
-# device's glibc 2.20 and link the real soname. A stub archive supplies the
-# symbols at link time only; the device provides the implementation.
-echo "==> screensaver_shield (dynamic, glibc 2.20, libX11.so.6)"
-X11INC="${X11INC:-/opt/homebrew/include}"
-X11STUB="$(mktemp -d)"
-trap 'rm -rf "$X11STUB"' EXIT
-[ -f "$X11INC/X11/Xlib.h" ] || {
-    echo "error: X11 headers not found at $X11INC (set X11INC=...)" >&2
-    exit 1
-}
-: > "$X11STUB/stub.c"
-for sym in XCloseDisplay XConfigureWindow XCreateWindow XDestroyWindow \
-           XFetchName XFlush XFree XGetErrorText XGetWindowAttributes \
-           XMapRaised XNextEvent XOpenDisplay XPending XQueryTree XSelectInput \
-           XSetErrorHandler XStoreName XSync XUnmapWindow; do
-    echo "void *$sym(void){return 0;}" >> "$X11STUB/stub.c"
-done
-"$ZIG" cc -target arm-linux-gnueabi -mcpu=cortex_a9 -shared -fPIC \
-    -Wl,-soname,libX11.so.6 -o "$X11STUB/libX11.so.6" "$X11STUB/stub.c" 2>/dev/null
-cp "$X11STUB/libX11.so.6" "$X11STUB/libX11.so"
-"$ZIG" cc -target arm-linux-gnueabi.2.20 -mcpu=cortex_a9 -Os -s \
-    -I"$X11INC" -o "$OUT/screensaver_shield" "$UPSTREAM/screensaver_shield.c" \
-    -L"$X11STUB" -lX11 2>/dev/null
+# xscreen speaks the X11 wire protocol over the local socket instead of
+# linking libX11, so it is an ordinary static musl binary.
+#
+# The previous design shipped xredraw and screensaver_shield, both built
+# dynamically against the device's libX11.so.6. Neither ever executed on the
+# target PW3: the shield prints "starting" as its first statement and
+# custom_ss.log never contained that line, so it died in the dynamic loader.
+# With nothing to repaint the UI, wake left FBInk's poster on the panel and
+# only the status-bar clock strip ever changed.
+echo "==> xscreen (static musl)"
+"$ZIG" cc -target arm-linux-musleabi -mcpu=cortex_a9 -Os -s -static \
+    -o "$OUT/xscreen" "$ROOT/native/xscreen.c" 2>/dev/null
+
+# Retired: superseded by xscreen and known not to run on this device.
+rm -f "$OUT/xredraw" "$OUT/screensaver_shield"
 
 # fbink is not built here: FBInk's build needs a full koxtoolchain sysroot.
 # Copy the copy the jailbreak itself installs at /mnt/us/libkh/bin/fbink, which

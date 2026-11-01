@@ -31,10 +31,12 @@ echo "--- executable check ---"
     && echo "fbink_hf: starts" || echo "fbink_hf: FAILED"
 "$RUNTIME/daily-index" 2026-10-31 5000 >/dev/null 2>&1 \
     && echo "daily-index: starts" || echo "daily-index: FAILED"
-# screensaver_shield is an X11 app; it has no --version and is not headless-safe
-# to probe, so only its loader/elf is checked here.
-[ -x "$RUNTIME/screensaver_shield" ] \
-    && echo "screensaver_shield: present" || echo "screensaver_shield: MISSING"
+# xscreen is the wake-repaint helper. It is static musl and speaks the X11
+# protocol directly, so unlike the xredraw/screensaver_shield pair it replaced,
+# it has no loader or libX11 dependency that could fail on this device.
+echo "xscreen selftest: $(DISPLAY=:0 "$RUNTIME/xscreen" selftest 2>&1)"
+"$RUNTIME/xscreen" version >/dev/null 2>&1 \
+    && echo "xscreen: starts" || echo "xscreen: FAILED"
 echo "daily-index(2026-10-31,5000) = $("$RUNTIME/daily-index" 2026-10-31 5000 2>&1)"
 
 # Render one page now. Same code path the screensaver uses, so a rendering bug

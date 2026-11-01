@@ -62,15 +62,18 @@ class ProjectTests(unittest.TestCase):
         import re
         deployed = {
             'bin/daily-index', 'bin/fbink_hf', 'bin/kindlexiping-reader',
-            'bin/screensaver_shield', 'data.tsv', 'books.json',
-            'SmileySans-Oblique.ttf', 'state/count',
-            'scripts/daemon.sh', 'scripts/draw.sh', 'scripts/toggle.sh',
-            'scripts/blanket_renderers.sh', 'runme.d/10-enable.sh',
+            'bin/xscreen', 'data.tsv', 'books.tsv',
+            'books.json', 'SmileySans-Oblique.ttf', 'state/count',
+            'scripts/daemon.sh', 'scripts/draw.sh', 'scripts/draw_books.sh',
+            'scripts/toggle.sh', 'scripts/blanket_renderers.sh',
+            'runme.d/10-enable.sh',
         }
         # Created at runtime rather than shipped.
         written = {'launcher.log', 'custom_ss.log', 'install.log',
                    'state/daily-index', 'state/browser-index',
                    'screen-lockscreen.raw', 'screen-after-run.raw',
+                   'screen-after-wake.raw', 'state/manual-date',
+                   'state/last-index',
                    'diag.log', 'diag.err'}
 
         problems = []

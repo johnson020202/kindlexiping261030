@@ -6,7 +6,7 @@ BASE="$VOLUME/extensions/kindlexiping261030"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 
 [ -d "$VOLUME" ] || { echo "Kindle not mounted at $VOLUME" >&2; exit 1; }
-[ -f "$ROOT/kindle/data.tsv" ] || { echo "Run 'python3 tools/build_kindle_data.py' first" >&2; exit 1; }
+[ -f "$ROOT/kindle/data.tsv" ] && [ -f "$ROOT/kindle/books.tsv" ] || { echo "Run 'python3 tools/build_kindle_data.py' first" >&2; exit 1; }
 
 mkdir -p "$ROOT/backups" "$VOLUME/extensions" "$VOLUME/documents" "$BASE"/{bin,scripts,state} "$BASE/runme.d"
 if [ -f "$VOLUME/RUNME.sh" ] && [ ! -f "$VOLUME/RUNME.before-kindlexiping.sh" ]; then
@@ -14,12 +14,25 @@ if [ -f "$VOLUME/RUNME.sh" ] && [ ! -f "$VOLUME/RUNME.before-kindlexiping.sh" ];
     cp "$VOLUME/RUNME.sh" "$ROOT/backups/RUNME-before-kindlexiping-$STAMP.sh"
 fi
 cp -R "$ROOT/kindle/bin/." "$BASE/bin/"
-rm -f "$BASE/bin/screensaver_draw"
+# Remote access that survives reboot. The hotfix's /etc/upstart/kmc.conf runs
+# /mnt/us/emergency.sh on every framework_ready, which is what makes the device
+# reachable over the LAN without a manual `;log runme` -- and USB storage mode
+# turns the radio off, so that manual step was forcing a cable cycle for every
+# deploy and every verification.
+cp "$ROOT/kindle/emergency.sh" "$VOLUME/emergency.sh"
+chmod 755 "$VOLUME/emergency.sh"
+# Retired helpers. xredraw and screensaver_shield were linked dynamically against
+# a stub libX11.so.6 and never ran on this device, which is what left the screen
+# frozen on the poster after wake. The install only copies, so binaries from an
+# older package have to be removed explicitly or they sit next to the live
+# implementation looking like the one in use.
+rm -f "$BASE/bin/screensaver_draw" "$BASE/bin/xredraw" "$BASE/bin/screensaver_shield"
 cp "$ROOT"/kindle/scripts/*.sh "$BASE/scripts/"
 cp "$ROOT/assets/fonts/SmileySans-Oblique.ttf" "$BASE/"
 cp "$ROOT/assets/fonts/OFL.txt" "$BASE/SmileySans-OFL.txt"
 cp "$ROOT/content/books.json" "$BASE/books.json"
 cp "$ROOT/kindle/data.tsv" "$BASE/data.tsv"
+cp "$ROOT/kindle/books.tsv" "$BASE/books.tsv"
 cp "$ROOT/kindle/LICENSE" "$ROOT/kindle/UPSTREAM-LICENSE" "$ROOT/kindle/THIRD_PARTY_NOTICES.md" "$ROOT/kindle/CREDITS" "$BASE/"
 chmod -R u+rwX "$BASE"
 printf '5000\n' > "$BASE/state/count"
